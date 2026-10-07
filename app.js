@@ -112,35 +112,62 @@ function updateLastScoreLine() {
 }
 
 function parseSheetToRows(sheetName) {
-  const sheet = workbook.Sheets[sheetName];
-  const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
-
-  let start = 0;
-  if (rows.length > 0) {
-    const r0 = rows[0].map(x => normalize(x).toLowerCase());
-    if (r0.includes("lecke") || r0.includes("lesson") || r0.includes("english") || r0.includes("magyar")) {
-      start = 1;
-    }
-  }
-
+  const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { header: 1, defval: "" });
+  const headers = (rows[0] ?? []).map(x => normalize(x).toLowerCase());
+  const enHeader = headers.findIndex(x => x === "angol szó" || x === "english" || x === "en");
+  const huHeader = headers.findIndex(x => x === "magyar szó" || x === "magyar" || x === "hu");
+  const lessonHeader = headers.findIndex(x => x === "lecke" || x === "lesson");
+  const numberHeader = headers.findIndex(x => ["szám", "sorszám", "szószedet száma", "number"].includes(x));
+  const hasHeader = lessonHeader >= 0 || enHeader >= 0 || huHeader >= 0 || numberHeader >= 0;
+  // Az új minta: A=lecke, B=szám (üres fejléc is lehet), C=angol, D=magyar.
+  const numbered = numberHeader >= 0 || enHeader === 2 || (!hasHeader && rows.some(r => r.length >= 4));
+  const lessonCol = lessonHeader >= 0 ? lessonHeader : 0;
+  const numberCol = numberHeader >= 0 ? numberHeader : 1;
+  const enCol = enHeader >= 0 ? enHeader : numbered ? 2 : 1;
+  const huCol = huHeader >= 0 ? huHeader : numbered ? 3 : 2;
+  const counters = new Map();
   const out = [];
-  for (let i = start; i < rows.length; i++) {
-    const [lesson, en, hu] = rows[i];
-    const L = normalize(lesson);
-    const E = normalize(en);
-    const H = normalize(hu);
-    if (!L || !E || !H) continue;
-    out.push({ lesson: L, en: E, hu: H });
+  for (let i = hasHeader ? 1 : 0; i < rows.length; i++) {
+    const row = rows[i];
+    const lesson = normalize(row[lessonCol]);
+    const en = normalize(row[enCol]);
+    const hu = normalize(row[huCol]);
+    if (!lesson || !en || !hu) continue;
+    let number;
+    if (numbered) {
+      const value = normalize(row[numberCol]);
+      if (!value) continue;
+      number = Number(value);
+      if (!Number.isSafeInteger(number) || number < 1) {
+        throw new Error('Érvénytelen szószedetszám: ' + sheetName + ', ' + (i + 1) + '. sor. Pozitív egész szám szükséges.');
+      }
+    } else {
+      number = (counters.get(lesson) ?? 0) + 1;
+      counters.set(lesson, number);
+    }
+    out.push({ lesson, number, en, hu });
   }
   return out;
 }
 
-async function loadExcel() {
+async function loadExcel(file = null) {
   hideStatus();
   try {
-    const res = await fetch(EXCEL_PATH, { cache: "no-store" });
-    if (!res.ok) throw new Error(`Nem tudom betölteni: ${EXCEL_PATH} (HTTP ${res.status})`);
-    const buf = await res.arrayBuffer();
+    if (!file && location.protocol === "file:") {
+      showStatus("Az automatikus Excel-betöltéshez az Inditas.cmd fájllal indítsd az alkalmazást. Vagy válaszd ki az Excelt az alábbi gombbal.");
+      return;
+    }
+    let buf;
+    if (file) {
+      buf = await file.arrayBuffer();
+    } else {
+      const res = await fetch(EXCEL_PATH, { cache: "no-store" });
+      if (!res.ok) throw new Error(`Nem tudom betölteni: ${EXCEL_PATH} (HTTP ${res.status})`);
+      buf = await res.arrayBuffer();
+    }
+    stopTimer();
+    el("quizArea").classList.add("hidden");
+    el("idleArea").classList.remove("hidden");
     workbook = XLSX.read(buf, { type: "array" });
 
     dataBySheet.clear();
@@ -152,7 +179,7 @@ async function loadExcel() {
     initSelectors();
     showStatus("Excel betöltve. Add meg a neved, majd válassz évfolyamot és leckét.", "ok");
   } catch (e) {
-    showStatus(`Hiba: ${e.message}`, "error");
+    showStatus(`Hiba: ${e.message}. Válaszd ki az Excel-fájlt az alábbi gombbal.`, "error");
     console.error(e);
   }
 }
@@ -167,13 +194,13 @@ function initSelectors() {
     gradeSelect.appendChild(opt);
   });
 
-  gradeSelect.addEventListener("change", () => {
+  gradeSelect.onchange = () => {
     populateLessons(gradeSelect.value);
-  });
+  };
 
-  el("lessonSelect").addEventListener("change", () => {
+  el("lessonSelect").onchange = () => {
     refreshLessonStatsAndDefaults();
-  });
+  };
 
   // default
   const defaultSheet = workbook.SheetNames[0] ?? null;
@@ -220,28 +247,26 @@ function clampInt(x, min, max) {
 }
 
 function refreshLessonStatsAndDefaults() {
-  const sheet = el("gradeSelect").value;
-  const lesson = el("lessonSelect").value;
-  const lessonRows = getLessonRows(sheet, lesson);
-  const total = lessonRows.length;
-
-  el("lessonCount").textContent = String(total);
-
-  // alapértelmezett: 1 és utolsó
-  el("rangeFrom").value = "1";
-  el("rangeTo").value = String(Math.max(1, total));
+  const rows = getLessonRows(el("gradeSelect").value, el("lessonSelect").value);
+  el("lessonCount").textContent = String(rows.length);
+  const numbers = rows.map(r => r.number);
+  const min = numbers.length ? Math.min(...numbers) : 1;
+  const max = numbers.length ? Math.max(...numbers) : 1;
+  el("rangeFrom").value = String(min);
+  el("rangeTo").value = String(max);
 }
 
 function resolveLessonRangeRows(sheet, lesson, from1, to1) {
   const lessonRows = getLessonRows(sheet, lesson);
-  const total = lessonRows.length;
-  // 1-indexelt tartomány -> 0-index slice
-  const from = clampInt(from1, 1, Math.max(1, total));
-  const to = clampInt(to1, 1, Math.max(1, total));
+  const from = Number(normalize(from1));
+  const to = Number(normalize(to1));
+  if (!Number.isSafeInteger(from) || from < 1 || !Number.isSafeInteger(to) || to < 1) {
+    return { sliced: [], total: lessonRows.length, a: from, b: to };
+  }
   const a = Math.min(from, to);
   const b = Math.max(from, to);
-  const sliced = lessonRows.slice(a - 1, b); // b inclusive, slice end exclusive -> b
-  return { sliced, total, a, b };
+  const sliced = lessonRows.filter(row => row.number >= a && row.number <= b);
+  return { sliced, total: lessonRows.length, a, b };
 }
 
 function chooseMode(baseMode) {
@@ -422,7 +447,7 @@ function renderQuestion() {
     : "EN→HU (választós)";
 
   el("metaLine").textContent =
-    `${current.sheet} • ${current.lesson} • ${modeLabel} • Intervallum: ${current.rangeFrom}-${current.rangeTo} / ${current.lessonTotal}`;
+    `${current.sheet} • ${current.lesson} • ${modeLabel} • Szószedetszám: ${current.rangeFrom}–${current.rangeTo} • ${current.lessonTotal} szó a leckében`;
 
   el("prompt").textContent = q.prompt;
 
@@ -532,6 +557,11 @@ function nextQuestion() {
 }
 
 function wireUI() {
+  el("excelFile").addEventListener("change", async (event) => {
+    const file = event.target.files[0];
+    if (file) await loadExcel(file);
+    event.target.value = "";
+  });
   el("startBtn").addEventListener("click", startQuiz);
 
   el("submitTextBtn").addEventListener("click", handleTextSubmit);
