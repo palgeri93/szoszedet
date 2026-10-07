@@ -14,11 +14,14 @@
     <p class="text-slate-600 mb-6">Forrás: <code class="bg-slate-200 px-1 rounded">data/szavak.xlsx</code></p>
 
     <div id="status" class="p-3 rounded bg-amber-100 text-amber-900 mb-4 hidden"></div>
-    <div class="mb-6">
+    <details class="mb-6 text-sm text-slate-600">
+      <summary class="cursor-pointer">Tanári beállítások</summary>
+      <div class="mt-3">
       <label for="excelFile" class="block text-sm font-semibold mb-2">Excel-fájl betöltése</label>
       <input id="excelFile" type="file" accept=".xlsx,.xls" class="block w-full border rounded-lg p-2 bg-white" />
       <p class="mt-2 text-sm text-slate-600">Válaszd ki a szavak.xlsx vagy szavak_uj.xlsx fájlt. Az Excel módosítása után töltsd be újra.</p>
-    </div>
+      </div>
+    </details>
 
     <div class="grid gap-4 sm:grid-cols-2 mb-6">
       <div class="bg-white rounded-2xl shadow p-4">
@@ -37,7 +40,7 @@
 
         <div class="grid grid-cols-2 gap-3 mt-4">
           <div>
-            <label class="block text-sm font-semibold mb-2">Számtól</label>
+            <label class="block text-sm font-semibold mb-2">Szószedet számtól</label>
             <input id="rangeFrom" type="number" min="1" class="w-full border rounded-lg p-2" value="1" />
           </div>
           <div>
@@ -46,6 +49,7 @@
           </div>
         </div>
 
+        <p id="rangeHint" class="mt-2 text-sm text-slate-600"></p>
         <p class="mt-2 text-sm text-slate-600">Az Excelben megadott számok alapján. Az azonos számhoz tartozó összes szó bekerül a kérdezhető szavak közé.</p>
         <label class="block text-sm font-semibold mt-4 mb-2">Feladattípus</label>
         <select id="modeSelect" class="w-full border rounded-lg p-2">

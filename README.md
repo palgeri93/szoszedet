@@ -15,6 +15,7 @@ A szám pozitív egész, leckén belül ismétlődhet. Például az 5-ös számh
 Az új formátumban a szám nélküli sorok kimaradnak, amíg kitöltöd őket. A hibás szám hibaüzenetet ad. A régi, háromoszlopos munkalapok (Lecke, Angol szó, Magyar szó) átmenetileg továbbra is leckén belüli sorszám alapján működnek.
 
 Minden szóváltozat külön kérdezhető. A kérdésszám és az ismétlés nélküli beállítás továbbra is szabályozza, hány kérdés készül; a tartomány az elérhető szavakat jelöli ki.
+A tartomány mindkét határának szerepelnie kell a kiválasztott lecke számai között. A mezők felső határa a lecke legnagyobb szószedetszáma, nem a szavak darabszáma. Hibás határral a gyakorlás nem indítható. A kézi Excel-betöltés a zárt Tanári beállítások részben található.
 
 ## Futtatás
 Windows alatt az Inditas.cmd fájlra kattints duplán. Ez elindít egy helyi kiszolgálót és megnyitja az alkalmazást a böngészőben. A data/szavak.xlsx automatikusan betöltődik. Az Excel mentése után az oldal frissítésével az új adatokat használja. Az indító Python futtatókörnyezetet igényel; ezen a gépen a Codex meglévő futtatókörnyezetét használja. GitHub Pages-en nincs szükség az indítóra.

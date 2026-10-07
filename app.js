@@ -254,13 +254,47 @@ function refreshLessonStatsAndDefaults() {
   const max = numbers.length ? Math.max(...numbers) : 1;
   el("rangeFrom").value = String(min);
   el("rangeTo").value = String(max);
+  for (const id of ["rangeFrom", "rangeTo"]) {
+    el(id).min = String(min);
+    el(id).max = String(max);
+    el(id).step = "1";
+    el(id).disabled = rows.length === 0;
+    el(id).setCustomValidity("");
+  }
+  el("rangeHint").textContent = rows.length
+    ? `Ebben a leckében ${min}–${max} közötti szószedetszámok szerepelnek.`
+    : "Ebben a leckében nincs kérdezhető szó.";
+}
+
+function getRangeError(sheet, lesson, value) {
+  const rows = getLessonRows(sheet, lesson);
+  if (!rows.length) return "Ebben a leckében nincs kérdezhető szó.";
+  const numbers = rows.map(row => row.number);
+  const min = Math.min(...numbers);
+  const max = Math.max(...numbers);
+  const number = Number(normalize(value));
+  if (!normalize(value) || !Number.isSafeInteger(number) || number < min || number > max) {
+    return `Ehhez a leckéhez ${min}–${max} közötti egész számot adj meg. A legnagyobb szószedetszám: ${max}.`;
+  }
+  if (!numbers.includes(number)) return `A ${number} szám nem szerepel ennek a leckének a szószedetében.`;
+  return "";
+}
+
+function validateRangeInputs() {
+  let valid = true;
+  for (const id of ["rangeFrom", "rangeTo"]) {
+    const message = getRangeError(el("gradeSelect").value, el("lessonSelect").value, el(id).value);
+    el(id).setCustomValidity(message);
+    if (message) valid = false;
+  }
+  return valid;
 }
 
 function resolveLessonRangeRows(sheet, lesson, from1, to1) {
   const lessonRows = getLessonRows(sheet, lesson);
   const from = Number(normalize(from1));
   const to = Number(normalize(to1));
-  if (!Number.isSafeInteger(from) || from < 1 || !Number.isSafeInteger(to) || to < 1) {
+  if (getRangeError(sheet, lesson, from1) || getRangeError(sheet, lesson, to1)) {
     return { sliced: [], total: lessonRows.length, a: from, b: to };
   }
   const a = Math.min(from, to);
@@ -374,6 +408,12 @@ function startQuiz() {
   // intervallum
   const from = el("rangeFrom").value;
   const to = el("rangeTo").value;
+  if (!validateRangeInputs()) {
+    const invalid = [el("rangeFrom"), el("rangeTo")].find(input => !input.validity.valid);
+    showStatus(invalid.validationMessage, "error");
+    invalid.reportValidity();
+    return;
+  }
 
   const { questions, info } = buildQuestions(sheet, lesson, mode, count, noRepeat, from, to);
 
@@ -578,8 +618,8 @@ function wireUI() {
   el("nameInput").addEventListener("input", updateLastScoreLine);
 
   // ha manuálisan átírják az intervallumot, ne akadjon meg a UI
-  el("rangeFrom").addEventListener("input", () => {});
-  el("rangeTo").addEventListener("input", () => {});
+  el("rangeFrom").addEventListener("input", validateRangeInputs);
+  el("rangeTo").addEventListener("input", validateRangeInputs);
 }
 
 wireUI();
