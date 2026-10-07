@@ -29,3 +29,7 @@ Tedd fel az index.html, app.js és data/szavak.xlsx fájlokat a repóba. GitHub 
 - A három típus véletlen keveréke
 
 Egy helyes válasz egy pont. Az utolsó eredményt név alapján menti a böngésző.
+
+## Eredmények
+Az Eredményeim táblázat az adott névhez tartozó összes befejezett kitöltést mutatja, a legfrissebbel kezdve. Tartalmazza a kitöltés dátumát, a kérdéstípust, az évfolyamot, a leckét, a tartományt, a maximális és elért pontot, a százalékot és a kitöltési időt. A korábban mentett utolsó eredményeket is átveszi.
+Az Eredmények letöltése gomb az adott tanuló eredményeit XLSX-fájlba menti, amely Excelben megnyitható. A böngésző adatainak törlésekor a helyi eredmények elvesznek; a letöltött fájl megmarad.

@@ -2,6 +2,85 @@
 
 const EXCEL_PATH = "data/szavak.xlsx";
 const SCORE_KEY = "vocabTrainerScores_v1"; // localStorage kulcs
+const HISTORY_KEY = "vocabTrainerHistory_v1";
+let resultHistory = null;
+
+function modeName(mode) {
+  return {
+    HU_TO_EN_TYPE: "Magyar → angol (írás)",
+    HU_TO_EN_MC: "Magyar → angol (választós)",
+    EN_TO_HU_MC: "Angol → magyar (választós)",
+    RANDOM_MIX: "Vegyes kérdések",
+  }[mode] ?? mode;
+}
+
+function getResultHistory() {
+  if (resultHistory !== null) return resultHistory;
+  try {
+    const stored = localStorage.getItem(HISTORY_KEY);
+    const parsed = stored ? JSON.parse(stored) : null;
+    resultHistory = Array.isArray(parsed) ? parsed : Object.entries(getScores()).map(([name, rec]) => ({ ...rec, name }));
+  } catch {
+    resultHistory = [];
+  }
+  return resultHistory;
+}
+
+function studentResults() {
+  const name = normalize(el("nameInput").value);
+  return getResultHistory().filter(rec => rec.name === name).slice().reverse();
+}
+
+function percentage(rec) {
+  return rec.total > 0 ? Math.round(rec.score / rec.total * 1000) / 10 : 0;
+}
+
+function resultCells(rec) {
+  return [rec.when, modeName(rec.mode), rec.sheet, rec.lesson, rec.range,
+    rec.total, rec.score, percentage(rec).toLocaleString("hu-HU") + "%", formatTime(rec.seconds * 1000)];
+}
+
+function renderResults() {
+  const records = studentResults();
+  const body = el("resultsBody");
+  body.replaceChildren();
+  el("resultsTable").classList.toggle("hidden", records.length === 0);
+  el("downloadResultsBtn").disabled = records.length === 0;
+  el("resultsEmpty").classList.toggle("hidden", records.length > 0);
+  el("resultsEmpty").textContent = normalize(el("nameInput").value)
+    ? "Ehhez a névhez még nincs befejezett kitöltés." : "Add meg a neved az eredményeid megtekintéséhez.";
+  for (const rec of records) {
+    const row = document.createElement("tr");
+    for (const value of resultCells(rec)) {
+      const cell = document.createElement("td");
+      cell.className = "p-2 border-t whitespace-nowrap";
+      cell.textContent = String(value);
+      row.appendChild(cell);
+    }
+    body.appendChild(row);
+  }
+}
+
+function downloadResults() {
+  const records = studentResults();
+  if (!records.length) return;
+  const rows = [["Név", "Kitöltés", "Kérdéstípus", "Évfolyam", "Lecke", "Szószedet tartomány", "Maximális pont", "Elért pont", "Százalék", "Kitöltési idő"]];
+  for (const rec of records) {
+    rows.push([rec.name, rec.when, modeName(rec.mode), rec.sheet, rec.lesson, rec.range,
+      rec.total, rec.score, rec.total > 0 ? rec.score / rec.total : 0, rec.seconds / 86400]);
+  }
+  const sheet = XLSX.utils.aoa_to_sheet(rows);
+  sheet["!cols"] = [22, 23, 30, 14, 12, 22, 18, 14, 14, 19].map(wch => ({ wch }));
+  sheet["!autofilter"] = { ref: sheet["!ref"] };
+  for (let row = 2; row <= rows.length; row++) {
+    sheet[`I${row}`].z = "0.0%";
+    sheet[`J${row}`].z = "[m]:ss";
+  }
+  const output = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(output, sheet, "Eredmények");
+  const name = normalize(el("nameInput").value).replace(/[^\p{L}\p{N}_-]/gu, "_");
+  XLSX.writeFile(output, `szoszedet-eredmenyek-${name}.xlsx`, { bookType: "xlsx" });
+}
 
 // State
 let workbook = null;
@@ -552,6 +631,7 @@ function saveScoreAtEnd() {
   const when = new Date().toLocaleString("hu-HU");
 
   const rec = {
+    name: current.name,
     score: current.score,
     total: current.questions.length,
     seconds,
@@ -562,11 +642,19 @@ function saveScoreAtEnd() {
     range: `${current.rangeFrom}-${current.rangeTo}`,
   };
 
-  const scores = getScores();
-  // név alapján felülírjuk a legutóbbit (egyszerű és egyértelmű)
-  scores[current.name] = rec;
-  setScores(scores);
+  const history = getResultHistory();
+  history.push(rec);
+  try {
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+    const scores = getScores();
+    scores[current.name] = rec;
+    setScores(scores);
+    rec.saved = true;
+  } catch {
+    rec.saved = false;
+  }
   updateLastScoreLine();
+  renderResults();
   return rec;
 }
 
@@ -578,6 +666,8 @@ function nextQuestion() {
   if (current.index >= current.questions.length) {
     stopTimer();
     const rec = saveScoreAtEnd();
+    current.locked = false;
+    el("timer").textContent = formatTime(rec.seconds * 1000);
 
     el("prompt").textContent = `Vége! Eredmény: ${current.score} / ${current.questions.length}`;
     el("metaLine").textContent = `${current.sheet} • ${current.lesson} • Mentve: ${current.name}`;
@@ -587,7 +677,7 @@ function nextQuestion() {
     el("restartBtn").classList.remove("hidden");
 
     setFeedback(
-      `Mentve (${current.name}): ${rec.score}/${rec.total} • idő: ${formatTime(rec.seconds * 1000)} • ${rec.when}`,
+      `${current.name}: ${rec.score}/${rec.total} pont • ${percentage(rec).toLocaleString("hu-HU")}% • idő: ${formatTime(rec.seconds * 1000)} • ${rec.when}. ${rec.saved ? "Az eredmény mentve a böngészőben." : "A böngésző nem tudta megőrizni az eredményt. A Letöltés gombbal mentsd el."}`,
       true
     );
     return;
@@ -597,6 +687,7 @@ function nextQuestion() {
 }
 
 function wireUI() {
+  el("downloadResultsBtn").addEventListener("click", downloadResults);
   el("excelFile").addEventListener("change", async (event) => {
     const file = event.target.files[0];
     if (file) await loadExcel(file);
@@ -616,6 +707,8 @@ function wireUI() {
   });
 
   el("nameInput").addEventListener("input", updateLastScoreLine);
+  el("nameInput").addEventListener("input", renderResults);
+  renderResults();
 
   // ha manuálisan átírják az intervallumot, ne akadjon meg a UI
   el("rangeFrom").addEventListener("input", validateRangeInputs);
